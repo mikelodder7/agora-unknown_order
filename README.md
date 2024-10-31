@@ -11,21 +11,27 @@ I've seen this commonly across multiple projects where they need a multiprecisio
 and use one of three libraries: [Gnu MP BigNum Library](https://gmplib.org/), [OpenSSL's BigNum Library](https://www.openssl.org/docs/man1.0.2/man3/bn.html)
 and [Rust's BigInt Library](https://crates.io/crates/num-bigint), depending on the needs and requirements (licensing, performance, platform target, constant time).
 
-The default is to use the pure rust option without any external C bindings. This version is also
-friendly to WASM.
+The default is to use the pure rust option without any external C bindings and is safe for cryptographic use (crypto-bigint). 
+This version is also friendly to WASM.
 
 To use OpenSSL's BigNum library, you must have libcrypto and libssl in your path.
 Put the following in your `Cargo.toml`.
 
 ```toml
-unknown_order = { version = "0.9", default-features = false, features = ["openssl"] }
+unknown_order = { version = "0.11", default-features = false, features = ["openssl"] }
 ```
 
 To use Gnu MP BigNum library, you must have libgmp in your path.
 Put the following in your `Cargo.toml`.
 
 ```toml
-unknown_order = { version = "0.9", default-features = false, features = ["gmp"] }
+unknown_order = { version = "0.11", default-features = false, features = ["gmp"] }
+```
+
+To use the pure rust version num-bigint, put the following in your `Cargo.toml`.
+
+```toml
+unknown_order = { version = "0.11", default-features = false, features = ["rust"] }
 ```
 
 This library wraps them all into a common API, so they can be used interchangeably.

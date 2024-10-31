@@ -15,21 +15,59 @@ on:
 
 env:
   CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
   RUSTDOCFLAGS: "-Dwarnings"
+  RUST_LOG_STYLE: "always"
+
+defaults:
+    run:
+        shell: bash
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: {{ $matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        rust:
+          - stable
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
+
+      - name: Install LLVM and Clang
+        if: startsWith(matrix.os, 'windows')
+        uses: KyleMayes/install-llvm-action@v1.9.0
         with:
-          toolchain: stable
+          version: "13.0"
+          directory: ${{ runner.temp }}/llvm
+
+      - name: Set LIBCLANG_PATH
+        if: startsWith(matrix.os, 'windows')
+        run: echo "LIBCLANG_PATH=$((gcm clang)).source -replace "clang.exe)" >> $env:GITHUB_ENV
+
+      - name: Set OPENSSL_ROOT_DIR
+        if: startsWith(matrix.os, 'windows')
+        run: echo "OPENSSL_ROOT_DIR=C:/Program Files/OpenSSL" >> $env:GITHUB_ENV
+
+      - name: Set OPENSSL_LIB_DIR
+        if: startsWith(matrix.os, 'macos')
+        run: echo "OPENSSL_LIB_DIR=/usr/local/opt/openssl@1.1" >> $env:GITHUB_ENV
+
+      - name: Install Rust
+        run: |
+          rustup set auto-self-update disable
+          rustup toolchain install ${{ matrix.rust }} --profile minimal
+          rustup default ${{ matrix.rust }}
+
       - run: cargo build --no-default-features --features=rust
       - run: cargo build --no-default-features --features=crypto
       - run: cargo build --no-default-features --features=openssl
       - run: cargo build --no-default-features --features=gmp
+
   rustfmt:
     runs-on: ubuntu-latest
     steps:
@@ -39,3 +77,66 @@ jobs:
           toolchain: stable
           components: rustfmt
       - run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: clippy
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - run: cargo test build --no-default-features --features=rust --release
+      - run: cargo test build --no-default-features --features=crypto --release
+      - run: cargo test build --no-default-features --features=openssl --release
+      - run: cargo test build --no-default-features --features=gmp --release
+
+  careful:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-careful
+      - run: cargo careful test
+
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - run: cargo doc --all-features
+
+  deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-udeps
+      - run: cargo udeps --all-targets --all-features
+
+  outdated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-outdated
+      - run: cargo outdated -root-deps-only --exit-code 1
+
+  pants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-pants
+      - run: cargo pants --loud
