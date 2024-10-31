@@ -4,146 +4,248 @@
 */
 use crate::BigNumber;
 
-use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use core::{
+    borrow::Borrow,
+    iter::{Product, Sum},
+    ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+};
 
-/// Represents a cyclic group where all operations are reduced by a modulus.
+/// Represents a residual group where all operations are reduced by a modulus.
 /// Purely a convenience struct to avoid having to call mod{ops}
+#[derive(Debug, Clone)]
 pub struct Group {
+    /// The current value
+    pub(crate) value: BigNumber,
     /// The upper limit that all values in the group are to be reduced
-    pub modulus: BigNumber,
+    pub(crate) modulus: BigNumber,
 }
 
-macro_rules! binops_group {
-    ($ops:ident, $func:ident, $opr:ident) => {
-        impl<'a, 'b, 'c> $ops<(&'a BigNumber, &'b BigNumber)> for &'c Group {
-            type Output = BigNumber;
+macro_rules! bin_ops_impl {
+    ($trait:ident, $func:ident, $op:tt) => {
+        impl $trait for Group {
+            type Output = Group;
 
-            fn $func(self, pair: (&'a BigNumber, &'b BigNumber)) -> Self::Output {
-                pair.0.$opr(pair.1, &self.modulus)
+            fn $func(self, rhs: Group) -> Group {
+                &self $op &rhs
             }
         }
 
-        impl<'a, 'c> $ops<(&'a BigNumber, BigNumber)> for &'c Group {
-            type Output = BigNumber;
+        impl $trait<&Group> for Group {
+            type Output = Group;
 
-            fn $func(self, pair: (&'a BigNumber, BigNumber)) -> Self::Output {
-                self.$func((pair.0, &pair.1))
+            fn $func(self, rhs: &Group) -> Group {
+                &self $op rhs
             }
         }
 
-        impl<'b, 'c> $ops<(BigNumber, &'b BigNumber)> for &'c Group {
-            type Output = BigNumber;
+        impl $trait<Group> for &Group {
+            type Output = Group;
 
-            fn $func(self, pair: (BigNumber, &'b BigNumber)) -> Self::Output {
-                self.$func((&pair.0, pair.1))
-            }
-        }
-
-        impl<'c> $ops<(BigNumber, BigNumber)> for &'c Group {
-            type Output = BigNumber;
-
-            fn $func(self, pair: (BigNumber, BigNumber)) -> Self::Output {
-                self.$func((&pair.0, &pair.1))
-            }
-        }
-
-        impl<'a, 'b> $ops<(&'a BigNumber, &'b BigNumber)> for Group {
-            type Output = BigNumber;
-
-            fn $func(self, pair: (&'a BigNumber, &'b BigNumber)) -> Self::Output {
-                (&self).$func(pair)
-            }
-        }
-
-        impl<'a> $ops<(&'a BigNumber, BigNumber)> for Group {
-            type Output = BigNumber;
-
-            fn $func(self, pair: (&'a BigNumber, BigNumber)) -> Self::Output {
-                (&self).$func((pair.0, &pair.1))
-            }
-        }
-
-        impl<'b> $ops<(BigNumber, &'b BigNumber)> for Group {
-            type Output = BigNumber;
-
-            fn $func(self, pair: (BigNumber, &'b BigNumber)) -> Self::Output {
-                (&self).$func((&pair.0, pair.1))
-            }
-        }
-
-        impl $ops<(BigNumber, BigNumber)> for Group {
-            type Output = BigNumber;
-
-            fn $func(self, pair: (BigNumber, BigNumber)) -> Self::Output {
-                (&self).$func((&pair.0, &pair.1))
+            fn $func(self, rhs: Group) -> Group {
+                self $op &rhs
             }
         }
     };
 }
-macro_rules! binops_group_assign {
-    ($ops:ident, $func:ident, $opr:ident) => {
-        impl<'a, 'b, 'c> $ops<(&'a mut BigNumber, &'b BigNumber)> for &'c Group {
-            fn $func(&mut self, pair: (&'a mut BigNumber, &'b BigNumber)) {
-                *pair.0 = pair.0.$opr(pair.1, &self.modulus);
+macro_rules! bin_assign_ops_impl {
+    ($trait:ident, $func:ident, $op:tt) => {
+        impl $trait for Group {
+            fn $func(&mut self, rhs: Group) {
+                *self = &*self $op &rhs;
             }
         }
 
-        impl<'a, 'c> $ops<(&'a mut BigNumber, BigNumber)> for &'c Group {
-            fn $func(&mut self, pair: (&'a mut BigNumber, BigNumber)) {
-                (*self).$func((pair.0, &pair.1))
-            }
-        }
-
-        impl<'a, 'b> $ops<(&'a mut BigNumber, &'b BigNumber)> for Group {
-            fn $func(&mut self, pair: (&'a mut BigNumber, &'b BigNumber)) {
-                *pair.0 = pair.0.$opr(pair.1, &self.modulus);
-            }
-        }
-
-        impl<'a> $ops<(&'a mut BigNumber, BigNumber)> for Group {
-            fn $func(&mut self, pair: (&'a mut BigNumber, BigNumber)) {
-                (*self).$func((pair.0, &pair.1))
+        impl $trait<&Group> for Group {
+            fn $func(&mut self, rhs: &Group) {
+                *self = &*self $op rhs;
             }
         }
     };
 }
 
-binops_group!(Add, add, modadd);
-binops_group!(Sub, sub, modsub);
-binops_group!(Mul, mul, modmul);
-binops_group!(Div, div, moddiv);
-binops_group_assign!(AddAssign, add_assign, modadd);
-binops_group_assign!(SubAssign, sub_assign, modsub);
-binops_group_assign!(MulAssign, mul_assign, modmul);
-binops_group_assign!(DivAssign, div_assign, moddiv);
+impl Add<&Group> for &Group {
+    type Output = Group;
+
+    fn add(self, rhs: &Group) -> Group {
+        assert_eq!(self.modulus, rhs.modulus);
+        Group {
+            value: self.value.modadd(&rhs.value, &self.modulus),
+            modulus: self.modulus.clone(),
+        }
+    }
+}
+bin_ops_impl!(Add, add, +);
+bin_assign_ops_impl!(AddAssign, add_assign, +);
+
+impl Sub<&Group> for &Group {
+    type Output = Group;
+
+    fn sub(self, rhs: &Group) -> Group {
+        assert_eq!(self.modulus, rhs.modulus);
+        Group {
+            value: self.value.modsub(&rhs.value, &self.modulus),
+            modulus: self.modulus.clone(),
+        }
+    }
+}
+bin_ops_impl!(Sub, sub, -);
+bin_assign_ops_impl!(SubAssign, sub_assign, -);
+
+impl Mul<&Group> for &Group {
+    type Output = Group;
+
+    fn mul(self, rhs: &Group) -> Group {
+        assert_eq!(self.modulus, rhs.modulus);
+        Group {
+            value: self.value.modmul(&rhs.value, &self.modulus),
+            modulus: self.modulus.clone(),
+        }
+    }
+}
+bin_ops_impl!(Mul, mul, *);
+bin_assign_ops_impl!(MulAssign, mul_assign, *);
+
+impl Div<&Group> for &Group {
+    type Output = Group;
+
+    fn div(self, rhs: &Group) -> Group {
+        assert_eq!(self.modulus, rhs.modulus);
+        Group {
+            value: self.value.moddiv(&rhs.value, &self.modulus),
+            modulus: self.modulus.clone(),
+        }
+    }
+}
+bin_ops_impl!(Div, div, /);
+bin_assign_ops_impl!(DivAssign, div_assign, /);
+
+impl Neg for &Group {
+    type Output = Group;
+
+    fn neg(self) -> Group {
+        Group {
+            value: self.value.modneg(&self.modulus),
+            modulus: self.modulus.clone(),
+        }
+    }
+}
+
+impl Neg for Group {
+    type Output = Group;
+
+    fn neg(self) -> Group {
+        -&self
+    }
+}
+
+impl<T> Sum<T> for Group
+where
+    T: Borrow<Group>,
+{
+    fn sum<I>(mut iter: I) -> Group
+    where
+        I: Iterator<Item = T>,
+    {
+        let mut r = if let Some(a) = iter.next() {
+            a.borrow().clone()
+        } else {
+            return Group::zero(BigNumber::one());
+        };
+        for a in iter {
+            let aa = a.borrow();
+            assert_eq!(r.modulus, aa.modulus);
+            r += a.borrow();
+        }
+        r
+    }
+}
+
+impl<T> Product<T> for Group
+where
+    T: Borrow<Group>,
+{
+    fn product<I>(mut iter: I) -> Self
+    where
+        I: Iterator<Item = T>,
+    {
+        let mut r = if let Some(a) = iter.next() {
+            a.borrow().clone()
+        } else {
+            return Group::one(BigNumber::one());
+        };
+        for a in iter {
+            let aa = a.borrow();
+            assert_eq!(r.modulus, aa.modulus);
+            r *= aa;
+        }
+        r
+    }
+}
 
 impl Group {
-    /// Compute -rhs mod self
-    pub fn neg(&self, rhs: &BigNumber) -> BigNumber {
-        rhs.modneg(&self.modulus)
+    /// Create a new group where the given `modulus` must be odd.
+    /// If not then the function returns [`None`]
+    pub fn new(value: BigNumber, modulus: BigNumber) -> Option<Self> {
+        if modulus.is_even() {
+            return None;
+        }
+        Some(Self { value, modulus })
     }
 
-    /// Compute the sum of the the bignumbers in the group
-    pub fn sum<I>(&self, nums: I) -> BigNumber
-    where
-        I: AsRef<[BigNumber]>,
-    {
-        let mut r = BigNumber::zero();
-        for a in nums.as_ref() {
-            r = r.modadd(a, &self.modulus);
-        }
-        r
+    /// Create a new group. If `modulus` is odd then the function will panic.
+    pub fn new_unchecked(value: BigNumber, modulus: BigNumber) -> Self {
+        assert!(modulus.is_odd());
+        Self { value, modulus }
     }
 
-    /// Compute the product of the the bignumbers in the group
-    pub fn product<I>(&self, nums: I) -> BigNumber
-    where
-        I: AsRef<[BigNumber]>,
-    {
-        let mut r = BigNumber::zero();
-        for a in nums.as_ref() {
-            r = r.modmul(a, &self.modulus);
+    /// Return the current value
+    pub const fn value(&self) -> &BigNumber {
+        &self.value
+    }
+
+    /// Return the modulus
+    pub const fn modulus(&self) -> &BigNumber {
+        &self.modulus
+    }
+
+    /// Compute the modular inverse of the current value if one exists
+    pub fn invert(&self) -> Option<Group> {
+        self.value.invert(&self.modulus).map(|value| Group {
+            value,
+            modulus: self.modulus.clone(),
+        })
+    }
+
+    /// Compute the modular exponentiation of the current value
+    /// raised to the power of `exponent`
+    pub fn pow(&self, exponent: &BigNumber) -> Group {
+        Group {
+            value: self.value.modpow(exponent, &self.modulus),
+            modulus: self.modulus.clone(),
         }
-        r
+    }
+
+    /// Compute the modular square of the current value
+    pub fn square(&self) -> Group {
+        Group {
+            value: self.value.modsqr(&self.modulus),
+            modulus: self.modulus.clone(),
+        }
+    }
+
+    /// Return the additive identity
+    pub fn zero(modulus: BigNumber) -> Group {
+        Group {
+            value: BigNumber::zero(),
+            modulus,
+        }
+    }
+
+    /// Return the multiplicative identity
+    pub fn one(modulus: BigNumber) -> Group {
+        Group {
+            value: BigNumber::one(),
+            modulus,
+        }
     }
 }

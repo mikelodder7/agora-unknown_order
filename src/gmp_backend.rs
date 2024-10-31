@@ -19,8 +19,14 @@ use subtle::{Choice, ConstantTimeEq};
 use zeroize::Zeroize;
 
 /// Big number
-#[derive(Ord, PartialOrd, Hash)]
+#[derive(Ord, PartialOrd)]
 pub struct Bn(pub(crate) Integer);
+
+impl core::hash::Hash for Bn {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
 
 clone_impl!(|b: &Bn| b.0.clone());
 default_impl!(Integer::new);
@@ -45,8 +51,8 @@ serdes_impl!(
     |b: &Bn| b.0.to_string_radix(16),
     |s: &str| { Integer::from_str_radix(s, 16).ok() },
     |b: &Bn| {
-        use num_traits::sign::Signed;
-        let mut digits = (&b.0).abs().to_digits::<u8>(rug::integer::Order::LsfBe);
+        let bb = b.0.clone();
+        let mut digits = bb.to_digits::<u8>(rug::integer::Order::LsfBe);
         digits.insert(0, if b.0.is_negative() { 1 } else { 0 });
         digits
     },
@@ -67,10 +73,16 @@ binops_impl!(Div, div, DivAssign, div_assign, /, /=);
 binops_impl!(Rem, rem, RemAssign, rem_assign, %, %=);
 neg_impl!(|b: &Integer| Bn(b.neg().complete()));
 shift_impl!(Shl, shl, ShlAssign, shl_assign, |lhs: &Integer, rhs| Bn(
-    lhs.shl(rhs as u32).complete()
+    #[allow(clippy::unnecessary_cast)]
+    {
+        lhs.shl(rhs as u32).complete()
+    }
 ));
 shift_impl!(Shr, shr, ShrAssign, shr_assign, |lhs: &Integer, rhs| Bn(
-    lhs.shr(rhs as u32).complete()
+    #[allow(clippy::unnecessary_cast)]
+    {
+        lhs.shr(rhs as u32).complete()
+    }
 ));
 
 impl ConstantTimeEq for Bn {
@@ -132,6 +144,17 @@ impl Bn {
             t += &nn;
         }
         t
+    }
+
+    /// Compute (self ^ 2) mod n
+    pub fn modsqr(&self, n: &Self) -> Self {
+        let nn = get_mod(n);
+        let mut t = self.clone().0.square();
+        t %= &nn.0;
+        if t < Integer::new() {
+            t += &nn.0;
+        }
+        Self(t)
     }
 
     /// Compute (self * 1/rhs) mod n
@@ -197,6 +220,16 @@ impl Bn {
     /// self == 1
     pub fn is_one(&self) -> bool {
         self.0 == 1
+    }
+
+    /// true if self is odd
+    pub fn is_odd(&self) -> bool {
+        self.0.is_odd()
+    }
+
+    /// true if self is even
+    pub fn is_even(&self) -> bool {
+        self.0.is_even()
     }
 
     /// Return the bit length
@@ -467,7 +500,7 @@ fn modpow() {
     let e = Bn::zero();
     let g = Bn::from(3);
 
-    let o = (&g).modpow(&e, &n);
+    let o = g.clone().modpow(&e, &n);
 
     assert_eq!(o, Bn::one());
 }

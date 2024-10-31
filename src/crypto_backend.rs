@@ -112,7 +112,7 @@ impl<'de> Deserialize<'de> for Sign {
         if d.is_human_readable() {
             struct SignStrVisitor;
 
-            impl<'de> Visitor<'de> for SignStrVisitor {
+            impl Visitor<'_> for SignStrVisitor {
                 type Value = Sign;
 
                 fn expecting(&self, f: &mut Formatter) -> fmt::Result {
@@ -480,13 +480,13 @@ where
     }
 }
 
-impl<'a, 'b, const LIMBS: usize> Add<&'a Bn<LIMBS>> for &'b Bn<LIMBS>
+impl<const LIMBS: usize> Add<&Bn<LIMBS>> for &Bn<LIMBS>
 where
     Uint<LIMBS>: Encoding,
 {
     type Output = Bn<LIMBS>;
 
-    fn add(self, rhs: &'a Bn<LIMBS>) -> Self::Output {
+    fn add(self, rhs: &Bn<LIMBS>) -> Self::Output {
         match (self.sign, rhs.sign) {
             (_, Sign::None) => self.clone(),
             (Sign::None, _) => rhs.clone(),
@@ -564,13 +564,13 @@ where
     }
 }
 
-impl<'a, 'b, const LIMBS: usize> Sub<&'a Bn<LIMBS>> for &'b Bn<LIMBS>
+impl<const LIMBS: usize> Sub<&Bn<LIMBS>> for &Bn<LIMBS>
 where
     Uint<LIMBS>: Encoding,
 {
     type Output = Bn<LIMBS>;
 
-    fn sub(self, rhs: &'a Bn<LIMBS>) -> Self::Output {
+    fn sub(self, rhs: &Bn<LIMBS>) -> Self::Output {
         match (self.sign, rhs.sign) {
             (_, Sign::None) => self.clone(),
             (Sign::None, _) => rhs.clone(),
@@ -648,13 +648,13 @@ where
     }
 }
 
-impl<'a, 'b, const LIMBS: usize> Mul<&'a Bn<LIMBS>> for &'b Bn<LIMBS>
+impl<const LIMBS: usize> Mul<&Bn<LIMBS>> for &Bn<LIMBS>
 where
     Uint<LIMBS>: Encoding,
 {
     type Output = Bn<LIMBS>;
 
-    fn mul(self, rhs: &'a Bn<LIMBS>) -> Self::Output {
+    fn mul(self, rhs: &Bn<LIMBS>) -> Self::Output {
         Bn {
             sign: self.sign * rhs.sign,
             value: self.value.checked_mul(&rhs.value).expect("overflow"),
@@ -718,13 +718,13 @@ where
     }
 }
 
-impl<'a, 'b, const LIMBS: usize> Div<&'a Bn<LIMBS>> for &'b Bn<LIMBS>
+impl<const LIMBS: usize> Div<&Bn<LIMBS>> for &Bn<LIMBS>
 where
     Uint<LIMBS>: Encoding,
 {
     type Output = Bn<LIMBS>;
 
-    fn div(self, rhs: &'a Bn<LIMBS>) -> Self::Output {
+    fn div(self, rhs: &Bn<LIMBS>) -> Self::Output {
         let (q, _) = self.div_rem(rhs);
         q
     }
@@ -781,13 +781,13 @@ where
     }
 }
 
-impl<'a, 'b, const LIMBS: usize> Rem<&'a Bn<LIMBS>> for &'b Bn<LIMBS>
+impl<const LIMBS: usize> Rem<&Bn<LIMBS>> for &Bn<LIMBS>
 where
     Uint<LIMBS>: Encoding,
 {
     type Output = Bn<LIMBS>;
 
-    fn rem(self, rhs: &'a Bn<LIMBS>) -> Self::Output {
+    fn rem(self, rhs: &Bn<LIMBS>) -> Self::Output {
         let (_, r) = self.div_rem(rhs);
         r
     }
@@ -1144,6 +1144,31 @@ where
         }
     }
 
+    /// Compute (self ^ 2) mod n
+    pub fn modsqr(&self, n: &Self) -> Self {
+        let params = runtime_mod::DynResidueParams::new(&n.value);
+        let l = runtime_mod::DynResidue::new(&self.value, params);
+
+        let result = l.square().retrieve();
+        let sign = if result.is_zero().into() {
+            Sign::None
+        } else {
+            self.sign
+        };
+
+        match sign {
+            Sign::None => Self::zero(),
+            Sign::Plus => Self {
+                sign,
+                value: result,
+            },
+            Sign::Minus => Self {
+                sign: Sign::Plus,
+                value: result.saturating_add(&n.value),
+            },
+        }
+    }
+
     /// Compute (self * 1/rhs) mod n
     pub fn moddiv(&self, rhs: &Self, n: &Self) -> Self {
         let params = runtime_mod::DynResidueParams::new(&n.value);
@@ -1215,6 +1240,16 @@ where
     /// self == 1
     pub fn is_one(&self) -> bool {
         self.sign.is_positive() && self.value.ct_eq(&Uint::<LIMBS>::ONE).into()
+    }
+
+    /// true if self is odd
+    pub fn is_odd(&self) -> bool {
+        self.value.is_odd().into()
+    }
+
+    /// true if self is even
+    pub fn is_even(&self) -> bool {
+        self.value.is_even().into()
     }
 
     /// Return the bit length

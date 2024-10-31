@@ -26,8 +26,14 @@ use subtle::{Choice, ConstantTimeEq};
 use zeroize::Zeroize;
 
 /// Big number
-#[derive(Ord, PartialOrd, Hash)]
+#[derive(Ord, PartialOrd)]
 pub struct Bn(pub(crate) BigInt);
+
+impl core::hash::Hash for Bn {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
+    }
+}
 
 clone_impl!(|b: &Bn| b.0.clone());
 default_impl!(BigInt::default);
@@ -118,6 +124,16 @@ impl Bn {
     pub fn modmul(&self, rhs: &Self, n: &Self) -> Self {
         let nn = get_mod(n);
         let mut t = (self * rhs) % &nn;
+        if t < Bn::zero() {
+            t += &nn;
+        }
+        t
+    }
+
+    /// Compute (self ^ 2) mod n
+    pub fn modsqr(&self, n: &Self) -> Self {
+        let nn = get_mod(n);
+        let mut t = (self * self) % &nn;
         if t < Bn::zero() {
             t += &nn;
         }
@@ -219,6 +235,15 @@ impl Bn {
         self.0.is_one()
     }
 
+    /// true if self is odd
+    pub fn is_odd(&self) -> bool {
+        self.0.is_odd()
+    }
+
+    /// true if self is even
+    pub fn is_even(&self) -> bool {
+        self.0.is_even()
+    }
     /// Return one
     pub fn one() -> Self {
         Self(BigInt::one())

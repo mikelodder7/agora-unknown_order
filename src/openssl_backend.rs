@@ -97,7 +97,7 @@ serdes_impl!(
 );
 zeroize_impl!(|b: &mut Bn| b.0.clear());
 
-impl<'a, 'b> Add<&'b Bn> for &'a Bn {
+impl Add<&Bn> for &Bn {
     type Output = Bn;
 
     fn add(self, rhs: &Self::Output) -> Self::Output {
@@ -107,7 +107,7 @@ impl<'a, 'b> Add<&'b Bn> for &'a Bn {
     }
 }
 
-impl<'a, 'b> Sub<&'b Bn> for &'a Bn {
+impl Sub<&Bn> for &Bn {
     type Output = Bn;
 
     fn sub(self, rhs: &Self::Output) -> Self::Output {
@@ -117,7 +117,7 @@ impl<'a, 'b> Sub<&'b Bn> for &'a Bn {
     }
 }
 
-impl<'a, 'b> Mul<&'b Bn> for &'a Bn {
+impl Mul<&Bn> for &Bn {
     type Output = Bn;
 
     fn mul(self, rhs: &Self::Output) -> Self::Output {
@@ -128,7 +128,7 @@ impl<'a, 'b> Mul<&'b Bn> for &'a Bn {
     }
 }
 
-impl<'a, 'b> Div<&'b Bn> for &'a Bn {
+impl Div<&Bn> for &Bn {
     type Output = Bn;
 
     fn div(self, rhs: &Self::Output) -> Self::Output {
@@ -139,7 +139,7 @@ impl<'a, 'b> Div<&'b Bn> for &'a Bn {
     }
 }
 
-impl<'a, 'b> Rem<&'b Bn> for &'a Bn {
+impl Rem<&Bn> for &Bn {
     type Output = Bn;
 
     fn rem(self, rhs: &Self::Output) -> Self::Output {
@@ -203,7 +203,10 @@ shift_impl!(Shl, shl, ShlAssign, shl_assign, |lhs: &BigNum, rhs| {
     if rhs == 1 {
         BigNumRef::lshift1(&mut n, lhs).unwrap();
     } else {
-        BigNumRef::lshift(&mut n, lhs, rhs as i32).unwrap();
+        #[allow(clippy::unnecessary_cast)]
+        {
+            BigNumRef::lshift(&mut n, lhs, rhs as i32).unwrap();
+        }
     }
     Bn(n)
 });
@@ -212,7 +215,10 @@ shift_impl!(Shr, shr, ShrAssign, shr_assign, |lhs: &BigNum, rhs| {
     if rhs == 1 {
         BigNumRef::rshift1(&mut n, lhs).unwrap();
     } else {
-        BigNumRef::rshift(&mut n, lhs, rhs as i32).unwrap();
+        #[allow(clippy::unnecessary_cast)]
+        {
+            BigNumRef::rshift(&mut n, lhs, rhs as i32).unwrap();
+        }
     }
     Bn(n)
 });
@@ -273,6 +279,14 @@ impl Bn {
         Bn(t)
     }
 
+    /// Compute (self ^ 2) mod n
+    pub fn modsqr(&self, n: &Self) -> Self {
+        let mut ctx = BigNumContext::new().unwrap();
+        let mut t = BigNum::new().unwrap();
+        BigNumRef::mod_sqr(&mut t, &self.0, &n.0, &mut ctx).unwrap();
+        Bn(t)
+    }
+
     /// Compute (self * 1/rhs) mod n
     pub fn moddiv(&self, rhs: &Self, n: &Self) -> Self {
         let mut ctx = BigNumContext::new().unwrap();
@@ -329,6 +343,16 @@ impl Bn {
     /// self == 1
     pub fn is_one(&self) -> bool {
         self.0.num_bits() == 1 && self.0.is_bit_set(0)
+    }
+
+    /// true if self is odd
+    pub fn is_odd(&self) -> bool {
+        self.0.is_odd()
+    }
+
+    /// true if self is even
+    pub fn is_even(&self) -> bool {
+        self.0.is_even()
     }
 
     /// Return the bit length

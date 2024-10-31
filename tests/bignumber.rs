@@ -122,7 +122,7 @@ fn is_prime() {
 
     let one = BigNumber::from(1);
     for (p, chain) in tests.iter() {
-        let mut prime = b10(*p);
+        let mut prime = b10(p);
         for _ in 1..*chain {
             prime = (prime << 1usize) + &one;
             assert!(prime.is_prime());
@@ -182,7 +182,7 @@ fn prime() {
     assert!(p.is_prime());
     let s = p.to_string().len();
     // Assumes base 10 length
-    assert!(308 <= s && s <= 309);
+    assert!((308..=309).contains(&s));
 }
 
 #[test]
